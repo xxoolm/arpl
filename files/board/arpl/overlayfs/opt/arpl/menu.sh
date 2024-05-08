@@ -145,13 +145,13 @@ function buildMenu() {
     writeConfigKey "build" "${BUILD}" "${USER_CONFIG_FILE}"
     # Delete synoinfo and reload model/build synoinfo
     writeConfigKey "synoinfo" "{}" "${USER_CONFIG_FILE}"
-    while IFS="=" read KEY VALUE; do
+    while IFS=': ' read KEY VALUE; do
       writeConfigKey "synoinfo.${KEY}" "${VALUE}" "${USER_CONFIG_FILE}"
     done < <(readModelMap "${MODEL}" "builds.${BUILD}.synoinfo")
     # Check addons
     PLATFORM="`readModelKey "${MODEL}" "platform"`"
     KVER="`readModelKey "${MODEL}" "builds.${BUILD}.kver"`"
-    while IFS="=" read ADDON PARAM; do
+    while IFS=': ' read ADDON PARAM; do
       [ -z "${ADDON}" ] && continue
       if ! checkAddonExist "${ADDON}" "${PLATFORM}" "${KVER}"; then
         deleteConfigKey "addons.${ADDON}" "${USER_CONFIG_FILE}"
@@ -215,7 +215,7 @@ function addonMenu() {
   # Read addons from user config
   unset ADDONS
   declare -A ADDONS
-  while IFS="=" read KEY VALUE; do
+  while IFS=': ' read KEY VALUE; do
     [ -n "${KEY}" ] && ADDONS["${KEY}"]="${VALUE}"
   done < <(readConfigMap "addons" "${USER_CONFIG_FILE}")
   NEXT="a"
@@ -331,15 +331,14 @@ function addonMenu() {
 function cmdlineMenu() {
   unset CMDLINE
   declare -A CMDLINE
-  while IFS="=" read KEY VALUE; do
+  while IFS=': ' read KEY VALUE; do
     [ -n "${KEY}" ] && CMDLINE["${KEY}"]="${VALUE}"
   done < <(readConfigMap "cmdline" "${USER_CONFIG_FILE}")
-  echo "a \"Add/edit a cmdline item\""                         > "${TMP_PATH}/menu"
+  echo "a \"Add/edit a cmdline item\""                           > "${TMP_PATH}/menu"
   echo "d \"Delete cmdline item(s)\""                           >> "${TMP_PATH}/menu"
   echo "c \"Define a custom MAC\""                              >> "${TMP_PATH}/menu"
   echo "s \"Show user cmdline\""                                >> "${TMP_PATH}/menu"
   echo "m \"Show model/build cmdline\""                         >> "${TMP_PATH}/menu"
-  echo "u \"Show SATA(s) # ports and drives\""                  >> "${TMP_PATH}/menu"
   echo "e \"Exit\""                                             >> "${TMP_PATH}/menu"
   # Loop menu
   while true; do
@@ -415,39 +414,11 @@ function cmdlineMenu() {
         ;;
       m)
         ITEMS=""
-        while IFS="=" read KEY VALUE; do
+        while IFS=': ' read KEY VALUE; do
           ITEMS+="${KEY}: ${VALUE}\n"
         done < <(readModelMap "${MODEL}" "builds.${BUILD}.cmdline")
         dialog --backtitle "`backtitle`" --title "Model/build cmdline" \
           --aspect 18 --msgbox "${ITEMS}" 0 0
-        ;;
-      u) TEXT=""
-        NUMPORTS=0
-        for PCI in `lspci -d ::106 | awk '{print$1}'`; do
-          NAME=`lspci -s "${PCI}" | sed "s/\ .*://"`
-          TEXT+="\Zb${NAME}\Zn\nPorts: "
-          unset HOSTPORTS
-          declare -A HOSTPORTS
-          while read LINE; do
-            ATAPORT="`echo ${LINE} | grep -o 'ata[0-9]*'`"
-            PORT=`echo ${ATAPORT} | sed 's/ata//'`
-            HOSTPORTS[${PORT}]=`echo ${LINE} | grep -o 'host[0-9]*$'`
-          done < <(ls -l /sys/class/scsi_host | fgrep "${PCI}")
-          while read PORT; do
-            ls -l /sys/block | fgrep -q "${PCI}/ata${PORT}" && ATTACH=1 || ATTACH=0
-            PCMD=`cat /sys/class/scsi_host/${HOSTPORTS[${PORT}]}/ahci_port_cmd`
-            [ "${PCMD}" = "0" ] && DUMMY=1 || DUMMY=0
-            [ ${ATTACH} -eq 1 ] && TEXT+="\Z2\Zb"
-            [ ${DUMMY} -eq 1 ] && TEXT+="\Z1"
-            TEXT+="${PORT}\Zn "
-            NUMPORTS=$((${NUMPORTS}+1))
-          done < <(echo ${!HOSTPORTS[@]} | tr ' ' '\n' | sort -n)
-          TEXT+="\n"
-        done
-        TEXT+="\nTotal of ports: ${NUMPORTS}\n"
-        TEXT+="\nPorts with color \Z1red\Zn as DUMMY, color \Z2\Zbgreen\Zn has drive connected."
-        dialog --backtitle "`backtitle`" --colors --aspect 18 \
-          --msgbox "${TEXT}" 0 0
         ;;
       e) return ;;
     esac
@@ -456,20 +427,15 @@ function cmdlineMenu() {
 
 ###############################################################################
 function synoinfoMenu() {
-  # Get dt flag from model
-  DT="`readModelKey "${MODEL}" "dt"`"
   # Read synoinfo from user config
   unset SYNOINFO
   declare -A SYNOINFO
-  while IFS="=" read KEY VALUE; do
+  while IFS=': ' read KEY VALUE; do
     [ -n "${KEY}" ] && SYNOINFO["${KEY}"]="${VALUE}"
   done < <(readConfigMap "synoinfo" "${USER_CONFIG_FILE}")
 
   echo "a \"Add/edit a synoinfo item\""   > "${TMP_PATH}/menu"
   echo "d \"Delete synoinfo item(s)\""    >> "${TMP_PATH}/menu"
-  if [ "${DT}" != "true" ]; then
-    echo "x \"Set maxdisks manually\""    >> "${TMP_PATH}/menu"
-  fi
   echo "s \"Show synoinfo entries\""      >> "${TMP_PATH}/menu"
   echo "e \"Exit\""                       >> "${TMP_PATH}/menu"
 
@@ -516,15 +482,6 @@ function synoinfoMenu() {
         done
         DIRTY=1
         ;;
-      x)
-        MAXDISKS=`readConfigKey "maxdisks" "${USER_CONFIG_FILE}"`
-        dialog --backtitle "`backtitle`" --title "Maxdisks" \
-          --inputbox "Type a value for maxdisks" 0 0 "${MAXDISKS}" \
-          2>${TMP_PATH}/resp
-        [ $? -ne 0 ] && continue
-        VALUE="`<"${TMP_PATH}/resp"`"
-        [ "${VALUE}" != "${MAXDISKS}" ] && writeConfigKey "maxdisks" "${VALUE}" "${USER_CONFIG_FILE}"
-        ;;
       s)
         ITEMS=""
         for KEY in ${!SYNOINFO[@]}; do
@@ -546,13 +503,6 @@ function extractDsmFiles() {
   RAMDISK_HASH="`readModelKey "${MODEL}" "builds.${BUILD}.pat.ramdisk-hash"`"
   ZIMAGE_HASH="`readModelKey "${MODEL}" "builds.${BUILD}.pat.zimage-hash"`"
 
-  # If we have little disk space, clean cache folder
-  if [ ${CLEARCACHE} -eq 1 ]; then
-    echo "Cleaning cache"
-    rm -rf "${CACHE_PATH}/dl"
-  fi
-  mkdir -p "${CACHE_PATH}/dl"
-
   SPACELEFT=`df --block-size=1 | awk '/'${LOADER_DEVICE_NAME}'3/{print$4}'`  # Check disk space left
 
   PAT_FILE="${MODEL}-${BUILD}.pat"
@@ -564,6 +514,13 @@ function extractDsmFiles() {
   if [ -f "${PAT_PATH}" ]; then
     echo "${PAT_FILE} cached."
   else
+    # If we have little disk space, clean cache folder
+    if [ ${CLEARCACHE} -eq 1 ]; then
+      echo "Cleaning cache"
+      rm -rf "${CACHE_PATH}/dl"
+    fi
+    mkdir -p "${CACHE_PATH}/dl"
+  
     echo "Downloading ${PAT_FILE}"
     # Discover remote file size
     FILESIZE=`curl --insecure -sLI "${PAT_URL}" | grep -i Content-Length | awk '{print$2}'`
@@ -714,7 +671,7 @@ function make() {
   KVER="`readModelKey "${MODEL}" "builds.${BUILD}.kver"`"
 
   # Check if all addon exists
-  while IFS="=" read ADDON PARAM; do
+  while IFS=': ' read ADDON PARAM; do
     [ -z "${ADDON}" ] && continue
     if ! checkAddonExist "${ADDON}" "${PLATFORM}" "${KVER}"; then
       dialog --backtitle "`backtitle`" --title "Error" --aspect 18 \
@@ -763,6 +720,7 @@ function advancedMenu() {
     fi
     echo "u \"Edit user config file manually\""            >> "${TMP_PATH}/menu"
     echo "t \"Try to recovery a DSM installed system\""    >> "${TMP_PATH}/menu"
+    echo "s \"Show SATA(s) # ports and drives\""           >> "${TMP_PATH}/menu"
     echo "e \"Exit\""                                      >> "${TMP_PATH}/menu"
 
     dialog --default-item ${NEXT} --backtitle "`backtitle`" --title "Advanced" \
@@ -782,7 +740,35 @@ function advancedMenu() {
         ;;
       u) editUserConfig; NEXT="e" ;;
       t) tryRecoveryDSM ;;
-      e) break ;;
+      s) TEXT=""
+        NUMPORTS=0
+        for PCI in `lspci -d ::106 | awk '{print$1}'`; do
+          NAME=`lspci -s "${PCI}" | sed "s/\ .*://"`
+          TEXT+="\Zb${NAME}\Zn\nPorts: "
+          unset HOSTPORTS
+          declare -A HOSTPORTS
+          while read LINE; do
+            ATAPORT="`echo ${LINE} | grep -o 'ata[0-9]*'`"
+            PORT=`echo ${ATAPORT} | sed 's/ata//'`
+            HOSTPORTS[${PORT}]=`echo ${LINE} | grep -o 'host[0-9]*$'`
+          done < <(ls -l /sys/class/scsi_host | fgrep "${PCI}")
+          while read PORT; do
+            ls -l /sys/block | fgrep -q "${PCI}/ata${PORT}" && ATTACH=1 || ATTACH=0
+            PCMD=`cat /sys/class/scsi_host/${HOSTPORTS[${PORT}]}/ahci_port_cmd`
+            [ "${PCMD}" = "0" ] && DUMMY=1 || DUMMY=0
+            [ ${ATTACH} -eq 1 ] && TEXT+="\Z2\Zb"
+            [ ${DUMMY} -eq 1 ] && TEXT+="\Z1"
+            TEXT+="${PORT}\Zn "
+            NUMPORTS=$((${NUMPORTS}+1))
+          done < <(echo ${!HOSTPORTS[@]} | tr ' ' '\n' | sort -n)
+          TEXT+="\n"
+        done
+        TEXT+="\nTotal of ports: ${NUMPORTS}\n"
+        TEXT+="\nPorts with color \Z1red\Zn as DUMMY, color \Z2\Zbgreen\Zn has drive connected."
+        dialog --backtitle "`backtitle`" --colors --aspect 18 \
+          --msgbox "${TEXT}" 0 0
+        ;;
+        e) break ;;
     esac
   done
 }
@@ -840,7 +826,7 @@ function selectModules() {
   ALLMODULES=`getAllModules "${PLATFORM}" "${KVER}"`
   unset USERMODULES
   declare -A USERMODULES
-  while IFS="=" read KEY VALUE; do
+  while IFS=': ' read KEY VALUE; do
     [ -n "${KEY}" ] && USERMODULES["${KEY}"]="${VALUE}"
   done < <(readConfigMap "modules" "${USER_CONFIG_FILE}")
   # menu loop
@@ -1030,7 +1016,7 @@ function updateMenu() {
           [ -f "${F}" ] && rm -f "${F}"
           [ -d "${F}" ] && rm -Rf "${F}"
         done < <(readConfigArray "remove" "/tmp/update-list.yml")
-        while IFS="=" read KEY VALUE; do
+        while IFS=': ' read KEY VALUE; do
           if [ "${KEY: -1}" = "/" ]; then
             rm -Rf "${VALUE}"
             mkdir -p "${VALUE}"
@@ -1161,6 +1147,7 @@ function updateMenu() {
 ###############################################################################
 
 if [ "x$1" = "xb" -a -n "${MODEL}" -a -n "${BUILD}" -a loaderIsConfigured ]; then
+  install-addons.sh
   make
   boot && exit 0 || sleep 5
 fi

@@ -1,5 +1,9 @@
 # Automated Redpill Loader
 
+Project archived, please use: https://github.com/RROrg/rr
+
+[中文说明](./README-Zh.md)
+
 This particular project was created to facilitate my testing with Redpill and I decided to share it with other users.
 
 I'm Brazilian and my English is not good, so I apologize for my translations.
@@ -46,9 +50,32 @@ There is no need to configure the VID/PID (if using a USB stick) or define the M
 
 If a model is chosen that uses the Device-tree system to define the HDs, there is no need to configure anything. In the case of models that do not use device-tree, the configurations must be done manually and for this there is an option in the "cmdline" menu to display the SATA controllers, DUMMY ports and ports in use, to assist in the creation of the "SataPortMap", "DiskIdxMap" and "sata_remap" if necessary.
 
-Another important point is that the loader detects whether or not the CPU has the FMA3 instruction and does not display the models that require it. So if the DS918+ and DVA3221 models are not displayed it is because of the CPU's lack of support for FMA instructions. You can disable this restriction and test at your own risk.
+Another important point is that the loader detects whether or not the CPU has the MOVBE instruction and does not display the models that require it. So if the DS918+ and DVA3221 models are not displayed it is because of the CPU's lack of support for MOVBE instructions. You can disable this restriction and test at your own risk.
 
 I developed a simple patch to no longer display the DUMMY port error on models without device-tree, the user will be able to install without having to worry about it.
+
+## Use proxy
+The proxy only support for terminal。
+
+For example, if you have one clashx (the default port is 7890) in the lan，follow the steps:
+
+1. Enabel 'Allow connent from Lan' (clashx only)
+
+![image](https://github.com/yunzhiclub/arpl/assets/12424383/fe024e8d-c764-4590-84cb-fc15ca7fccef)
+
+2. Get the proxy (the computer which runing clashx) ip address
+3. open arpl termianl (you can access arpl via ssh)
+```
+declare -x https_proxy="http://ipaddress:7890/"
+declare -x http_proxy="http://ipaddress:7890/"
+declare -x all_proxy="socks5:://ipaddress:7890/"
+```
+
+**Change the ipaddress** to your proxy host.
+
+4. Call the "menu.sh" 
+
+And then the proxy is effective。
 
 ## Quickstart guide
 

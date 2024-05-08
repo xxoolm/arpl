@@ -7,12 +7,12 @@ synoinfo: &synoinfo
   rss_server: "https://raw.githubusercontent.com/fbelavenuto/arpl/main/rss.xml"
   rss_server_ssl: "https://raw.githubusercontent.com/fbelavenuto/arpl/main/rss.xml"
   rss_server_v2: "https://raw.githubusercontent.com/fbelavenuto/arpl/main/rss.json"
-  #supportraidgroup: "no"
+  support_syno_hybrid_raid:
+  supportraidgroup:
 cmdline: &cmdline
   intel_iommu: "igfx_off"
   HddEnableDynamicPower: 1
   vender_format_version: 2
-  syno_port_thaw: 1
   synoboot2:
   syno_ttyS0: "serial,0x3f8"
   syno_ttyS1: "serial,0x2f8"
